@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>日めくりアイテム管理</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#6c5ce7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="日めくり">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;600;700;900&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0f1117; --surface:#1a1d27; --surface-hover:#222636;
+  --border:#2a2e3d; --text:#e8eaed; --text-muted:#8b8fa3;
+  --accent:#6c5ce7; --accent-light:#a29bfe;
+  --accent-glow:rgba(108,92,231,0.25);
+  --success:#00cec9; --success-glow:rgba(0,206,201,0.2);
+  --danger:#ff6b6b; --radius:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  font-family:'Noto Sans JP',sans-serif;
+  background:var(--bg);color:var(--text);
+  min-height:100vh;min-height:100dvh;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(108,92,231,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(108,92,231,0.03) 1px,transparent 1px);
+  background-size:60px 60px;pointer-events:none;z-index:0;
+}
+.app{
+  position:relative;z-index:1;
+  max-width:540px;margin:0 auto;padding:20px 16px 120px;
+}
+
+/* Audio unlock overlay */
+.audio-unlock{
+  position:fixed;inset:0;z-index:999;
+  background:rgba(15,17,23,0.95);
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:16px;
+}
+.audio-unlock.hidden{display:none;}
+.audio-unlock-btn{
+  background:var(--accent);border:none;color:white;
+  padding:20px 48px;border-radius:16px;cursor:pointer;
+  font-size:20px;font-weight:700;
+  font-family:'Noto Sans JP',sans-serif;
+  transition:all 0.3s;
+  animation:pulse 2s ease infinite;
+}
+.audio-unlock-btn:hover{
+  box-shadow:0 0 40px var(--accent-glow);transform:scale(1.05);
+}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 20px var(--accent-glow);}
+  50%{box-shadow:0 0 40px var(--accent-glow);}
+}
+.audio-unlock p{color:var(--text-muted);font-size:13px;max-width:280px;text-align:center;line-height:1.6;}
+
+/* Header */
+.header{text-align:center;margin-bottom:20px;}
+.header-label{
+  font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:4px;text-transform:uppercase;
+  color:var(--accent-light);margin-bottom:6px;
+}
+.date-display{
+  font-family:'Outfit',sans-serif;font-size:48px;font-weight:800;line-height:1;
+  background:linear-gradient(135deg,var(--text),var(--accent-light));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.date-sub{font-size:13px;color:var(--text-muted);font-weight:300;margin-top:2px;}
+.live-clock{
+  font-family:'Outfit',sans-serif;font-size:20px;font-weight:600;
+  color:var(--accent-light);margin-top:8px;letter-spacing:2px;
+}
+.day-nav{
+  display:flex;align-items:center;justify-content:center;
+  gap:14px;margin-top:12px;
+}
+.nav-btn{
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text);width:40px;height:40px;border-radius:50%;
+  cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+  transition:all 0.2s;
+}
+.nav-btn:hover{background:var(--accent);border-color:var(--accent);}
+.today-btn{
+  font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;
+  letter-spacing:1px;padding:7px 20px;
+  background:var(--accent);border:none;color:white;
+  border-radius:20px;cursor:pointer;transition:all 0.2s;
+}
+.today-btn:hover{box-shadow:0 0 20px var(--accent-glow);}
+
+.ws-status{
+  display:inline-block;width:8px;height:8px;border-radius:50%;
+  margin-left:8px;vertical-align:middle;transition:background 0.3s;
+}
+.ws-status.connected{background:#00cec9;box-shadow:0 0 8px var(--success-glow);}
+.ws-status.disconnected{background:var(--danger);}
+.audio-status{
+  display:inline-block;margin-left:6px;font-size:12px;vertical-align:middle;
+}
+
+/* Progress */
+.progress-bar{
+  margin-bottom:16px;padding:12px 14px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+}
+.progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.progress-label{font-size:11px;color:var(--text-muted);}
+.progress-count{font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;color:var(--success);}
+.progress-track{width:100%;height:5px;background:var(--bg);border-radius:3px;overflow:hidden;}
+.progress-fill{
+  height:100%;background:linear-gradient(90deg,var(--accent),var(--success));
+  border-radius:3px;transition:width 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+
+/* Add */
+.add-row{display:flex;gap:10px;margin-bottom:16px;}
+.add-input{
+  flex:1;background:var(--surface);border:1px solid var(--border);
+  color:var(--text);padding:12px 16px;border-radius:var(--radius);
+  font-size:15px;font-family:'Noto Sans JP',sans-serif;
+}
+.add-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 12px var(--accent-glow);}
+.add-input::placeholder{color:var(--text-muted);opacity:0.5;}
+.add-submit{
+  background:var(--accent);border:none;color:white;
+  padding:12px 20px;border-radius:var(--radius);cursor:pointer;
+  font-size:14px;font-weight:700;transition:all 0.2s;white-space:nowrap;
+}
+.add-submit:hover{box-shadow:0 4px 20px var(--accent-glow);}
+.add-submit:disabled{opacity:0.5;cursor:not-allowed;}
+
+/* Items */
+.section-label{
+  font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:3px;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:10px;padding-left:4px;
+}
+.item-entry{
+  display:flex;align-items:center;gap:12px;
+  padding:13px 14px;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:7px;transition:all 0.3s ease;
+}
+.item-entry:hover{background:var(--surface-hover);}
+.item-entry.brought{
+  border-color:var(--success);background:rgba(0,206,201,0.04);opacity:0.6;
+}
+.item-entry.brought .item-name{
+  text-decoration:line-through;text-decoration-color:var(--success);color:var(--text-muted);
+}
+.item-cb{
+  width:28px;height:28px;min-width:28px;
+  border:2px solid var(--border);border-radius:7px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:all 0.25s;user-select:none;-webkit-tap-highlight-color:transparent;
+}
+.item-cb:active{transform:scale(0.9);}
+.item-cb.checked{
+  background:var(--success);border-color:var(--success);
+  box-shadow:0 0 14px var(--success-glow);
+}
+.item-cb.checked::after{content:'✓';color:var(--bg);font-size:15px;font-weight:700;}
+.item-info{flex:1;min-width:0;}
+.item-name{font-size:15px;line-height:1.4;word-break:break-word;}
+.item-meta{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.item-time{
+  font-family:'Outfit',monospace;font-size:11px;color:var(--success);
+  white-space:nowrap;margin-left:8px;
+}
+.separator{
+  display:flex;align-items:center;gap:10px;
+  margin:14px 0;font-size:10px;color:var(--text-muted);
+  letter-spacing:2px;text-transform:uppercase;
+  font-family:'Outfit',sans-serif;font-weight:600;
+}
+.separator::before,.separator::after{content:'';flex:1;height:1px;background:var(--border);}
+.empty-state{text-align:center;padding:40px 16px;color:var(--text-muted);}
+.empty-state .icon{font-size:40px;margin-bottom:10px;}
+.empty-state p{font-size:13px;line-height:1.6;}
+.loading{text-align:center;padding:32px;color:var(--text-muted);font-size:13px;}
+.spinner{
+  display:inline-block;width:20px;height:20px;
+  border:3px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:spin 0.7s linear infinite;margin-bottom:8px;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* Announce banner */
+.announce{
+  position:fixed;top:0;left:0;right:0;
+  background:linear-gradient(135deg,var(--accent),var(--success));
+  color:white;text-align:center;padding:14px 20px;
+  font-size:18px;font-weight:700;
+  transform:translateY(-100%);transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  z-index:200;
+}
+.announce.show{transform:translateY(0);}
+
+/* Log */
+.log-panel{
+  margin-top:20px;padding:12px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);max-height:120px;overflow-y:auto;
+}
+.log-entry{font-family:'Outfit',monospace;font-size:11px;color:var(--text-muted);padding:2px 0;}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:20px;left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background:var(--surface);border:1px solid var(--success);
+  color:var(--text);padding:10px 22px;border-radius:12px;
+  font-size:14px;box-shadow:0 8px 32px rgba(0,0,0,0.3);
+  transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  z-index:100;pointer-events:none;
+}
+.toast.show{transform:translateX(-50%) translateY(0);}
+.toast.error{border-color:var(--danger);}
+
+/* Settings */
+.settings-btn{
+  position:absolute;top:20px;right:16px;
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text-muted);padding:5px 10px;border-radius:8px;
+  cursor:pointer;font-size:16px;z-index:2;
+}
+.settings-panel{
+  display:none;margin-bottom:16px;padding:16px;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+}
+.settings-panel.open{display:block;}
+.setting-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.setting-row label{font-size:12px;color:var(--text-muted);min-width:80px;}
+.setting-row input[type=range]{flex:1;}
+
+@media(max-width:400px){
+  .date-display{font-size:38px;}
+  .add-row{flex-direction:column;}
+}
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- Audio unlock overlay - user MUST tap this once to enable sound -->
+<div class="audio-unlock" id="audioUnlock">
+  <button class="audio-unlock-btn" onclick="unlockAudio()">🔊 音声を有効にする</button>
+  <p>このボタンを1回タップすると<br>チェック時の読み上げが有効になります</p>
+</div>
+
+<div class="announce" id="announce"></div>
+
+<div class="app">
+  <button class="settings-btn" onclick="toggleSettings()">⚙</button>
+
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-row">
+      <label>読み上げ速度</label>
+      <input type="range" id="speechRate" min="0.5" max="2" step="0.1" value="1"
+             oninput="document.getElementById('rateVal').textContent=parseFloat(this.value).toFixed(1)">
+      <span id="rateVal" style="font-size:12px;color:var(--text-muted);width:24px;">1.0</span>
+    </div>
+  </div>
+
+  <div class="header">
+    <div class="header-label">
+      Daily Item Tracker
+      <span class="ws-status disconnected" id="wsStatus" title="接続状態"></span>
+      <span class="audio-status" id="audioStatusIcon" title="音声状態">🔇</span>
+    </div>
+    <div class="date-display" id="dateDisplay"></div>
+    <div class="date-sub" id="dateSub"></div>
+    <div class="live-clock" id="liveClock"></div>
+    <div class="day-nav">
+      <button class="nav-btn" onclick="changeDay(-1)">◀</button>
+      <button class="today-btn" onclick="goToday()">今日</button>
+      <button class="nav-btn" onclick="changeDay(1)">▶</button>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-header">
+      <span class="progress-label">持ってきた進捗</span>
+      <span class="progress-count" id="progressCount">— / —</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <div class="add-row">
+    <input type="text" class="add-input" id="itemInput" placeholder="アイテムを追加..."
+           onkeydown="if(event.key==='Enter')addItem()">
+    <button class="add-submit" id="addBtn" onclick="addItem()">＋ 追加</button>
+  </div>
+
+  <div class="section-label">📦 アイテム一覧</div>
+  <div id="itemList">
+    <div class="loading"><div class="spinner"></div><br>読み込み中...</div>
+  </div>
+
+  <div class="section-label" style="margin-top:24px;">📋 ログ</div>
+  <div class="log-panel" id="logSection"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Audio Unlock ───
+// Browsers require a user gesture (click/tap) before allowing audio playback.
+// This overlay ensures every client has audio permission before using the app.
+let audioUnlocked = false;
+let audioCtx = null;
+
+function unlockAudio() {
+  // 1. Create AudioContext (for chime)
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // 2. Play a silent sound to unlock audio pipeline
+  const buf = audioCtx.createBuffer(1, 1, 22050);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(audioCtx.destination);
+  src.start(0);
+
+  // 3. Unlock speechSynthesis with a silent utterance
+  if ('speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    u.lang = 'ja-JP';
+    speechSynthesis.speak(u);
+  }
+
+  // 4. Test with actual audible speech
+  setTimeout(() => {
+    speakText('音声有効');
+  }, 300);
+
+  audioUnlocked = true;
+  document.getElementById('audioUnlock').classList.add('hidden');
+  document.getElementById('audioStatusIcon').textContent = '🔊';
+  addLog('🔊 音声を有効化しました');
+}
+
+// ─── Loud Chime: ピン（間）ポーン style ───
+function playChime() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  try {
+    const t = audioCtx.currentTime;
+
+    // ピン（高音）
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.frequency.setValueAtTime(1047, t); // C6（高いド）
+    gain1.gain.setValueAtTime(0.8, t);
+    gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.6);
+    osc1.start(t);
+    osc1.stop(t + 0.6);
+
+    // ピンの倍音（厚み）
+    const osc1b = audioCtx.createOscillator();
+    const gain1b = audioCtx.createGain();
+    osc1b.type = 'triangle';
+    osc1b.connect(gain1b);
+    gain1b.connect(audioCtx.destination);
+    osc1b.frequency.setValueAtTime(2094, t); // 1オクターブ上
+    gain1b.gain.setValueAtTime(0.3, t);
+    gain1b.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+    osc1b.start(t);
+    osc1b.stop(t + 0.5);
+
+    // ── 0.7秒の間 ──
+
+    // ポーン（低音、長め）
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.frequency.setValueAtTime(784, t + 0.7); // G5（ソ）
+    gain2.gain.setValueAtTime(0.0001, t);
+    gain2.gain.setValueAtTime(0.8, t + 0.7);
+    gain2.gain.exponentialRampToValueAtTime(0.01, t + 1.8);
+    osc2.start(t + 0.7);
+    osc2.stop(t + 1.8);
+
+    // ポーンの倍音
+    const osc2b = audioCtx.createOscillator();
+    const gain2b = audioCtx.createGain();
+    osc2b.type = 'triangle';
+    osc2b.connect(gain2b);
+    gain2b.connect(audioCtx.destination);
+    osc2b.frequency.setValueAtTime(1568, t + 0.7); // 1オクターブ上
+    gain2b.gain.setValueAtTime(0.0001, t);
+    gain2b.gain.setValueAtTime(0.3, t + 0.7);
+    gain2b.gain.exponentialRampToValueAtTime(0.01, t + 1.6);
+    osc2b.start(t + 0.7);
+    osc2b.stop(t + 1.6);
+
+  } catch (e) {}
+}
+
+// ─── Speech (ピンポーン → pause → read aloud) ───
+function speakText(text) {
+  if (!audioUnlocked) return;
+
+  // 1. ピンポーン
+  playChime();
+
+  // 2. チャイム終了(1.8秒) + 間(0.4秒) 後に読み上げ
+  setTimeout(() => {
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP';
+      u.rate = parseFloat(document.getElementById('speechRate').value) || 1;
+      u.volume = 1;
+      const voices = speechSynthesis.getVoices();
+      const ja = voices.find(v => v.lang.startsWith('ja'));
+      if (ja) u.voice = ja;
+
+      u.onerror = () => {
+        addLog('⚠ 読み上げ失敗（チャイム音で代替）');
+      };
+
+      speechSynthesis.speak(u);
+    }
+  }, 2200);
+}
+
+// Preload voices
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+// Save speech rate
+document.addEventListener('input', e => {
+  if (e.target.id === 'speechRate') localStorage.setItem('speechRate', e.target.value);
+});
+
+// ─── Config ───
+const API = '/api';
+let currentDate = new Date();
+let allItems = [];
+let ws = null;
+let wsRetryCount = 0;
+
+// ─── Init ───
+window.onload = () => {
+  if (currentDate.getHours() >= 18) currentDate.setDate(currentDate.getDate() + 1);
+  const saved = localStorage.getItem('speechRate');
+  if (saved) {
+    document.getElementById('speechRate').value = saved;
+    document.getElementById('rateVal').textContent = parseFloat(saved).toFixed(1);
+  }
+  renderDate();
+  startClock();
+  loadItems();
+  connectWebSocket();
+};
+
+// ─── WebSocket ───
+function connectWebSocket() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+  ws.onopen = () => {
+    wsRetryCount = 0;
+    document.getElementById('wsStatus').className = 'ws-status connected';
+    addLog('🟢 リアルタイム接続OK');
+  };
+
+  ws.onmessage = (event) => {
+    if (event.data === 'pong') return;
+    try { handleWsMessage(JSON.parse(event.data)); } catch (e) {}
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsStatus').className = 'ws-status disconnected';
+    const delay = Math.min(1000 * Math.pow(2, wsRetryCount), 30000);
+    wsRetryCount++;
+    addLog(`🔴 切断、${Math.round(delay/1000)}秒後に再接続...`);
+    setTimeout(connectWebSocket, delay);
+  };
+
+  ws.onerror = () => ws.close();
+
+  clearInterval(window._pingInterval);
+  window._pingInterval = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
+  }, 30000);
+}
+
+function handleWsMessage(msg) {
+  if (msg.type === 'item_checked') {
+    // ALL clients: speak + banner + reload
+    speakText(msg.item || '持ってきた');
+    showAnnounce(`✅ ${msg.item}`);
+    addLog(`🔊 "${msg.item}" 持ってきた (${msg.checkedAt || ''})`);
+    loadItems(true);
+  }
+  if (msg.type === 'item_unchecked') {
+    addLog(`⬜ "${msg.item}" チェック解除`);
+    loadItems(true);
+  }
+  if (msg.type === 'item_added') {
+    showToast(`📦 ${msg.item} が追加されました`);
+    addLog(`📦 "${msg.item}" 追加 → ${msg.date}`);
+    if (msg.date === dateKey(currentDate)) loadItems(true);
+  }
+}
+
+// ─── Announce Banner ───
+function showAnnounce(text) {
+  const el = document.getElementById('announce');
+  el.textContent = text;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ─── Clock ───
+function startClock() {
+  const tick = () => {
+    document.getElementById('liveClock').textContent =
+      new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  };
+  tick(); setInterval(tick, 1000);
+}
+
+// ─── Date ───
+function dateKey(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function renderDate() {
+  const days=['日','月','火','水','木','金','土'];
+  document.getElementById('dateDisplay').textContent=`${currentDate.getMonth()+1}月${currentDate.getDate()}日`;
+  document.getElementById('dateSub').textContent=`${currentDate.getFullYear()}年（${days[currentDate.getDay()]}曜日）`;
+}
+function changeDay(delta) {
+  currentDate.setDate(currentDate.getDate()+delta);
+  renderDate(); loadItems();
+}
+function goToday() {
+  currentDate=new Date();
+  if(currentDate.getHours()>=18) currentDate.setDate(currentDate.getDate()+1);
+  renderDate(); loadItems();
+}
+
+// ─── Load ───
+async function loadItems(silent) {
+  const dk=dateKey(currentDate);
+  if(!silent) document.getElementById('itemList').innerHTML='<div class="loading"><div class="spinner"></div><br>読み込み中...</div>';
+  try {
+    const res=await fetch(`${API}/load?date=${dk}`);
+    const data=await res.json();
+    if(data.success){
+      allItems=data.items||[];
+      renderItems();
+      if(!silent) addLog(`📥 ${dk}: ${allItems.length}件`);
+    }
+  } catch(err) {
+    if(!silent) addLog(`❌ 通信エラー: ${err.message}`);
+  }
+}
+
+// ─── Render ───
+function renderItems() {
+  const list=document.getElementById('itemList');
+  const unchecked=allItems.filter(i=>!i.checked);
+  const checked=allItems.filter(i=>i.checked);
+  if(allItems.length===0){
+    list.innerHTML='<div class="empty-state"><div class="icon">📭</div><p>アイテムがありません<br>上のフォームから追加できます</p></div>';
+    updateProgress(0,0); return;
+  }
+  let html='';
+  unchecked.forEach(it=>{html+=itemHTML(it);});
+  if(unchecked.length>0&&checked.length>0){
+    html+=`<div class="separator">持ってきた（${checked.length}件）</div>`;
+  }
+  checked.forEach(it=>{html+=itemHTML(it);});
+  list.innerHTML=html;
+  updateProgress(checked.length,allItems.length);
+}
+function itemHTML(it) {
+  const cls=it.checked?'brought':'';
+  const cbCls=it.checked?'checked':'';
+  const time=it.checked
+    ?`<span class="item-time">✅ ${it.checkedAt}</span>`
+    :`<span class="item-meta">⏳ ${it.inputTime}</span>`;
+  return `
+    <div class="item-entry ${cls}" id="item-${it.row}">
+      <div class="item-cb ${cbCls}" onclick="toggleCheck(${it.row},${!it.checked},'${escapeAttr(it.item)}')"></div>
+      <div class="item-info">
+        <div class="item-name">${escapeHTML(it.item)}</div>
+        ${time}
+      </div>
+    </div>`;
+}
+function updateProgress(done,total) {
+  document.getElementById('progressCount').textContent=total>0?`${done} / ${total}`:'— / —';
+  document.getElementById('progressFill').style.width=(total>0?done/total*100:0)+'%';
+}
+
+// ─── Add ───
+async function addItem() {
+  const input=document.getElementById('itemInput');
+  const val=input.value.trim();
+  if(!val) return;
+  const btn=document.getElementById('addBtn');
+  btn.disabled=true;
+  addLog(`📤 "${val}" 追加中...`);
+  try {
+    const res=await fetch(`${API}/add`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({item:val})
+    });
+    const data=await res.json();
+    if(data.success){
+      input.value='';
+      addLog(`📦 "${val}" 追加完了 → ${data.date}`);
+    } else {
+      showToast('❌ '+data.error,'error');
+    }
+  } catch(err) {
+    showToast('❌ 通信エラー','error');
+  }
+  btn.disabled=false;
+}
+
+// ─── Toggle (no local speech - WebSocket handles it for ALL clients) ───
+async function toggleCheck(row,doCheck,itemName) {
+  try {
+    const res=await fetch(`${API}/check`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:doCheck?'check':'uncheck',row})
+    });
+    const data=await res.json();
+    if(!data.success){
+      showToast('❌ 更新エラー','error');
+      loadItems(true);
+    }
+  } catch(err) {
+    showToast('❌ 通信エラー','error');
+    loadItems(true);
+  }
+}
+
+// ─── Settings ───
+function toggleSettings(){document.getElementById('settingsPanel').classList.toggle('open');}
+
+// ─── Toast ───
+function showToast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='toast show'+(type==='error'?' error':'');
+  setTimeout(()=>t.className='toast',2500);
+}
+
+// ─── Log ───
+function addLog(msg){
+  const s=document.getElementById('logSection');
+  const e=document.createElement('div');
+  e.className='log-entry';
+  e.textContent=`[${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}] ${msg}`;
+  s.prepend(e);
+  while(s.children.length>50) s.removeChild(s.lastChild);
+}
+
+// ─── Utils ───
+function escapeHTML(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+function escapeAttr(t){return(t||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+</script>
+<script>
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
