@@ -58,3 +58,4 @@ gcloud run deploy daily-tracker \
 - **このイメージを公開リポジトリ（Docker Hub等）にpushしないでください**
 - Artifact Registry（GCP内）へのpushは問題ありません
 - 将来的にはSecret Managerへの移行を推奨します
+# cloud-run-daily-tracker
